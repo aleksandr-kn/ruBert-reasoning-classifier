@@ -14,6 +14,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import nltk
 
+import argparse
+
+import platform
+import os
+
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     classification_report, confusion_matrix, roc_curve, auc,
@@ -84,7 +89,9 @@ def finetune_rubert(df, max_samples=None):
 
     import torch
 
-    # torch.set_num_threads(1) # Важно на чипах Apple silicon
+    if platform.system() == "Darwin":
+        torch.set_num_threads(1) # Важно на чипах Apple silicon
+        print("Set torch threads = 1 for macOS")
 
     # Выбор девайса (CPU / GPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -229,9 +236,16 @@ def main():
     Основная функция
     """
 
-    # Загружаем данные TODO: сделать чтобы через параметр
-    data_path = "./data/texts/corrected_texts_with_percentile_90_test.csv"
-    df = pd.read_csv(data_path, encoding="utf-8")
+    parser = argparse.ArgumentParser(description="Train RuBERT classifier")
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        default="./data/texts/corrected_texts_with_percentile_90_test.csv",
+        help="Путь к CSV файлу с данными"
+    )
+    args = parser.parse_args()
+
+    df = pd.read_csv(args.data_path, encoding="utf-8")
     df = df[df["reasoning_label"].isin([0, 1])].copy()
     df["reasoning_label"] = df["reasoning_label"].astype(int)
 
