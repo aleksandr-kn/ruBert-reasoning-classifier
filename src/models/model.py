@@ -269,7 +269,6 @@ def main():
 
         print("После балансировки классов:")
         print(df["reasoning_label"].value_counts())
-        sys.exit(0)
 
     if len(df) == 0:
         print("Нет валидных данных для обучения!")
