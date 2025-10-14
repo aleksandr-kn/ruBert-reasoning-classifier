@@ -237,17 +237,39 @@ def main():
     """
 
     parser = argparse.ArgumentParser(description="Train RuBERT classifier")
+    # Путь до csv датасета
     parser.add_argument(
         "--data_path",
         type=str,
         default="./data/texts/corrected_texts_with_percentile_90_test.csv",
         help="Путь к CSV файлу с данными"
     )
+
+    # Балансировать ли классы апсемплингом
+    parser.add_argument(
+        "--balance_classes",
+        type=bool,
+        default=True,
+        help="Балансировать классы через апсемплинг меньшинства (по умолчанию True)"
+    )
+
     args = parser.parse_args()
 
     df = pd.read_csv(args.data_path, encoding="utf-8")
     df = df[df["reasoning_label"].isin([0, 1])].copy()
     df["reasoning_label"] = df["reasoning_label"].astype(int)
+
+    # --- Балансировка классов (если включена) ---
+
+    if args.balance_classes:
+        print("Соотношение классов:")
+        print(df["reasoning_label"].value_counts())
+
+        df = balance_classes(df, target_col="reasoning_label")
+
+        print("После балансировки классов:")
+        print(df["reasoning_label"].value_counts())
+        sys.exit(0)
 
     if len(df) == 0:
         print("Нет валидных данных для обучения!")
@@ -258,6 +280,31 @@ def main():
     use_pymorphy = False  # не лемматизируем для BERT
 
     finetune_rubert(df, max_samples=None)
+
+def balance_classes(df: pd.DataFrame, target_col: str = "reasoning_label") -> pd.DataFrame:
+    """
+    Балансировка классов через апсемплинг меньшинства.
+    """
+
+    from sklearn.utils import resample
+
+    # Разделяем на мажоритарный и миноритарный классы
+    df_majority = df[df[target_col] == df[target_col].mode()[0]]
+    df_minority = df[df[target_col] != df[target_col].mode()[0]]
+
+    # Апсемплинг меньшинства
+    df_minority_upsampled = resample(
+        df_minority,
+        replace=True,
+        n_samples=len(df_majority),
+        random_state=42
+    )
+
+    # Объединяем и перемешиваем
+    df_balanced = pd.concat([df_majority, df_minority_upsampled])
+    df_balanced = df_balanced.sample(frac=1, random_state=42).reset_index(drop=True)
+
+    return df_balanced
 
 def print_metrics_and_plots(model_name, y_test, y_pred, y_proba):
     """
