@@ -158,6 +158,104 @@ def finetune_rubert(df, max_samples=None):
     )
     trainer.train()
 
+    # --- сохранение CLS-векторoв с каждого слоя (вставить после trainer.train()) ---
+    import os, numpy as np
+    from tqdm import tqdm
+
+    # Папка для сохранения
+    out_dir = "./outputs/hidden_states"
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Убедимся, что модель вернёт hidden_states
+    model.config.output_hidden_states = True
+
+    # Создаём DataLoader для теста (используем тот же RuBERTDataset)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+    model.eval()
+    all_labels = []
+    all_texts = []  # если хочешь сохранять тексты (в порядке test_dataset)
+    # Если у тебя есть X_test из области выше — используем его; иначе соберём пустой список
+    try:
+        texts_for_test = list(X_test)  # X_test определён в outer scope
+    except NameError:
+        texts_for_test = [None] * len(test_dataset)
+
+    # Буферы для присоединения эмбеддингов (инициализируем позже после первого batch)
+    layer_buffers = None
+    num_samples = 0
+
+    with torch.no_grad():
+        idx = 0
+        for batch in tqdm(test_loader, desc="Extract hidden states"):
+            # batch — dict: input_ids, attention_mask, (maybe token_type_ids), labels
+            inputs = {k: v.to(device) for k, v in batch.items() if k != "labels"}
+            labels_batch = batch["labels"].cpu().numpy()
+            batch_size = labels_batch.shape[0]
+
+            outputs = model(**inputs, output_hidden_states=True, return_dict=True)
+            hidden_states = outputs.hidden_states  # tuple len L (L = num_layers+1)
+            # hidden_states[l]: tensor(shape=(batch_size, seq_len, hidden_dim))
+
+            if layer_buffers is None:
+                n_layers = len(hidden_states)
+                hidden_size = hidden_states[0].shape[-1]
+                # Создаём список пустых списков для накопления
+                layer_buffers = [[] for _ in range(n_layers)]
+
+            # Для каждого слоя берём CLS (позиция 0)
+            for l in range(len(hidden_states)):
+                cls_batch = hidden_states[l][:, 0, :].cpu().numpy()  # (batch_size, hidden_dim)
+                layer_buffers[l].append(cls_batch)
+
+            # метаданные
+            all_labels.append(labels_batch)
+            # если у тебя есть X_test: добавляем соответствующие тексты в порядке
+            start = idx * test_loader.batch_size
+            for b_i in range(batch_size):
+                pos = start + b_i
+                if pos < len(texts_for_test):
+                    all_texts.append(texts_for_test[pos])
+                else:
+                    all_texts.append(None)
+            idx += 1
+            num_samples += batch_size
+
+    # Склеиваем буферы в массивы (по слоям)
+    cls_by_layer = []
+    for l in range(len(layer_buffers)):
+        cls_by_layer.append(np.vstack(layer_buffers[l]))  # (N, hidden_dim)
+
+    labels_arr = np.concatenate(all_labels, axis=0)[:num_samples]
+    # texts list may have full length num_samples
+    texts_arr = all_texts[:num_samples]
+
+    # Сохраним: per-layer .npy + мета csv
+    for l, arr in enumerate(cls_by_layer):
+        np.save(os.path.join(out_dir, f"cls_layer_{l}.npy"), arr)
+    print("Saved CLS arrays per layer to", out_dir)
+
+    # Сохраним метаданные (labels + short text)
+    import csv
+    meta_path = os.path.join(out_dir, "meta.csv")
+    with open(meta_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["index", "label", "text"])
+        for i, (lab, txt) in enumerate(zip(labels_arr.tolist(), texts_arr)):
+            short = (txt[:300].replace("\n", " ") if isinstance(txt, str) else "")
+            writer.writerow([i, int(lab), short])
+    print("Saved meta.csv with labels and texts")
+
+    # Опционально: сжимаем всё в один npz
+    np.savez_compressed(os.path.join(out_dir, "cls_all_layers.npz"),
+                        labels=labels_arr, texts=np.array(texts_arr), **{
+            f"layer_{i}": cls_by_layer[i] for i in range(len(cls_by_layer))
+        })
+    print("Saved cls_all_layers.npz")
+
+    # Отключаем возврат hidden_states что остальное работало как обычно
+    model.config.output_hidden_states = False
+
     # 6. Предсказания
     raw_preds = trainer.predict(test_dataset)
     y_pred = np.argmax(raw_preds.predictions, axis=1)
@@ -187,17 +285,21 @@ def finetune_rubert(df, max_samples=None):
     print("ROC AUC:", roc_auc_val)
     print("PR AUC:", pr_auc_val)
 
+    import gc
+    gc.collect()
+    torch.cuda.empty_cache()
+
     # 7. Предсказания для пользовательских примеров
-    custom_sentences = [
-        "Зачем нужны книги их же так долго читать. А я скажу обратное: книги очень полезны мы узнаëм информацию из книг. Хочу вам всем сказать читайте книги. Я вот долго не читал и не видел пользы. Но опыт показал - есть реальная польза.",
-        "Сегодня было настолько жарко, что я вообще почти ничем не занимался. Так до магазина только сходил.",
-        "Действия Трампа, вероятно, приведут к самой нестабильной ситуации с долларом за последние 80 лет. Ведь в основе любого доверия лежит стабильность и предсказуемость, а когда политика становится непредсказуемой, возникают сомнения. Если доверие к доллару падает у большинства государств, то не удивительно, что растёт волатильность валюты — проявление неуверенности в фундаменте мировой экономики. В этом контексте возникает вопрос: насколько крепок сегодняшний мировой порядок, если один из его столпов так легко подвержен колебаниям? И если ситуация не изменится, последствия для глобальной экономики могут оказаться серьёзнее, чем мы ожидаем.",
-        "Сегодня рынок ноутбуков переполнен дешевыми китайскими решениями, собранными буквально на коленке.",
-        "Сегодня особо ничем интересным не занимались. Так ревью кода и какие-то небольшие багфиксы, особо никому не нужные делали и кофе весь день пили.",
-        "Бояться смерти — это всё равно что думать, будто знаешь то, чего не знаешь. Никто не знает, что такое смерть: может быть, она — величайшее благо для человека, но люди боятся её, как будто точно знают, что она — величайшее зло. Но ведь это и есть самое настоящее невежество — думать, будто знаешь то, чего не знаешь",
-        "Однажды в жаркий полдень Сократ шёл по рыночной площади. Воздух дрожал от зноя, и люди прятались в тени колоннад. Он остановился у прилавка с глиняной посудой, долго смотрел на чаши, кувшины, тарелки, потом улыбнулся и пошёл дальше. Один из учеников спросил его: — Учитель, почему ты остановился, если ничего не купил? — Я смотрю, — ответил Сократ, — сколько всего есть на рынке, что мне не нужно."
-    ]
-    predict_custom_sentences(model, tokenizer, custom_sentences)
+    # custom_sentences = [
+    #     "Зачем нужны книги их же так долго читать. А я скажу обратное: книги очень полезны мы узнаëм информацию из книг. Хочу вам всем сказать читайте книги. Я вот долго не читал и не видел пользы. Но опыт показал - есть реальная польза.",
+    #     "Сегодня было настолько жарко, что я вообще почти ничем не занимался. Так до магазина только сходил.",
+    #     "Действия Трампа, вероятно, приведут к самой нестабильной ситуации с долларом за последние 80 лет. Ведь в основе любого доверия лежит стабильность и предсказуемость, а когда политика становится непредсказуемой, возникают сомнения. Если доверие к доллару падает у большинства государств, то не удивительно, что растёт волатильность валюты — проявление неуверенности в фундаменте мировой экономики. В этом контексте возникает вопрос: насколько крепок сегодняшний мировой порядок, если один из его столпов так легко подвержен колебаниям? И если ситуация не изменится, последствия для глобальной экономики могут оказаться серьёзнее, чем мы ожидаем.",
+    #     "Сегодня рынок ноутбуков переполнен дешевыми китайскими решениями, собранными буквально на коленке.",
+    #     "Сегодня особо ничем интересным не занимались. Так ревью кода и какие-то небольшие багфиксы, особо никому не нужные делали и кофе весь день пили.",
+    #     "Бояться смерти — это всё равно что думать, будто знаешь то, чего не знаешь. Никто не знает, что такое смерть: может быть, она — величайшее благо для человека, но люди боятся её, как будто точно знают, что она — величайшее зло. Но ведь это и есть самое настоящее невежество — думать, будто знаешь то, чего не знаешь",
+    #     "Однажды в жаркий полдень Сократ шёл по рыночной площади. Воздух дрожал от зноя, и люди прятались в тени колоннад. Он остановился у прилавка с глиняной посудой, долго смотрел на чаши, кувшины, тарелки, потом улыбнулся и пошёл дальше. Один из учеников спросил его: — Учитель, почему ты остановился, если ничего не купил? — Я смотрю, — ответил Сократ, — сколько всего есть на рынке, что мне не нужно."
+    # ]
+    # predict_custom_sentences(model, tokenizer, custom_sentences)
 
 def predict_custom_sentences(model, tokenizer, sentences):
     """
@@ -308,6 +410,8 @@ def balance_classes(df: pd.DataFrame, target_col: str = "reasoning_label") -> pd
 def print_metrics_and_plots(model_name, y_test, y_pred, y_proba):
     """
     Вспомогательная функция для вывода метрик и построения графиков ROC и PR
+
+    TODO: нужно приделать к текущей реализации, понадобится
     """
     acc = accuracy_score(y_test, y_pred)
     prec = precision_score(y_test, y_pred)
