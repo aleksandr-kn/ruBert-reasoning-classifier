@@ -158,7 +158,7 @@ def finetune_rubert(df, max_samples=None):
     )
     trainer.train()
 
-    # --- сохранение CLS-векторoв с каждого слоя (вставить после trainer.train()) ---
+    # --- Saving CLS tokesn START ---
     import os, numpy as np
     from tqdm import tqdm
 
@@ -174,8 +174,8 @@ def finetune_rubert(df, max_samples=None):
 
     model.eval()
     all_labels = []
-    all_texts = []  # если хочешь сохранять тексты (в порядке test_dataset)
-    # Если у тебя есть X_test из области выше — используем его; иначе соберём пустой список
+    all_texts = []
+    # Используем X_test
     try:
         texts_for_test = list(X_test)  # X_test определён в outer scope
     except NameError:
@@ -255,6 +255,7 @@ def finetune_rubert(df, max_samples=None):
 
     # Отключаем возврат hidden_states что остальное работало как обычно
     model.config.output_hidden_states = False
+    # --- Saving CLS tokesn END ---
 
     # 6. Предсказания
     raw_preds = trainer.predict(test_dataset)
