@@ -19,6 +19,8 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
+import plotly.express as px
+
 show_PCA = False
 show_examples = False
 show_TSNE = True
@@ -50,16 +52,37 @@ if show_PCA:
 
 # === 3. t-SNE для более детального взгляда ===
 if show_TSNE:
+    # Подготовка данных
     tsne = TSNE(n_components=2, random_state=42, perplexity=30)
     cls_2d_tsne = tsne.fit_transform(cls_vectors)
 
-    plt.figure(figsize=(8,6))
-    for lbl in np.unique(labels):
-        idxs = labels == lbl
-        plt.scatter(cls_2d_tsne[idxs,0], cls_2d_tsne[idxs,1], label=f"Label {lbl}", alpha=0.7)
-    plt.legend()
-    plt.title(f"t-SNE 2D of CLS vectors (Layer {layer})")
-    plt.show()
+    df_plot = pd.DataFrame({
+        'x': cls_2d_tsne[:, 0],
+        'y': cls_2d_tsne[:, 1],
+        'label': labels,
+        'text': texts
+    })
+
+    fig = px.scatter(
+        df_plot,
+        x='x',
+        y='y',
+        color=df_plot['label'].astype(str),
+        hover_data={'text': True},
+        title=f"t-SNE 2D of CLS vectors (Layer {layer})"
+    )
+
+    fig.show()
+
+    # Старая визуализация, но возможно еще понадобится
+    if False:
+        plt.figure(figsize=(8,6))
+        for lbl in np.unique(labels):
+            idxs = labels == lbl
+            plt.scatter(cls_2d_tsne[idxs,0], cls_2d_tsne[idxs,1], label=f"Label {lbl}", alpha=0.7)
+        plt.legend()
+        plt.title(f"t-SNE 2D of CLS vectors (Layer {layer})")
+        plt.show()
 
 # === 4. Опционально: показать несколько примеров из каждого кластера ===
 if show_examples:
