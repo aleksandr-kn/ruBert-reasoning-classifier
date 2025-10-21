@@ -18,15 +18,17 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+import umap
 
 import plotly.express as px
 
 show_PCA = False
 show_examples = False
 show_TSNE = True
+show_UMAP = False
 
 # === 1. Загрузка данных ===
-layer = 12  # номер слоя (например, последний слой)
+layer = 1  # номер слоя (например, последний слой)
 cls_vectors = np.load(f"./outputs/hidden_states/cls_layer_{layer}.npy")
 
 meta = pd.read_csv("./outputs/hidden_states/meta.csv")
@@ -84,7 +86,37 @@ if show_TSNE:
         plt.title(f"t-SNE 2D of CLS vectors (Layer {layer})")
         plt.show()
 
-# === 4. Опционально: показать несколько примеров из каждого кластера ===
+# === 5. UMAP ===
+if show_UMAP:
+    # Настройка UMAP
+    reducer = umap.UMAP(
+        n_neighbors=40,   # сколько ближайших соседей учитывать
+        min_dist=0.2,     # насколько "плотно" кластеры будут располагаться
+        n_components=2,
+        random_state=42,
+        metric='cosine'
+    )
+
+    cls_2d_umap = reducer.fit_transform(cls_vectors)
+
+    df_plot = pd.DataFrame({
+        'x': cls_2d_umap[:, 0],
+        'y': cls_2d_umap[:, 1],
+        'label': labels,
+        'text': texts
+    })
+
+    fig = px.scatter(
+        df_plot,
+        x='x',
+        y='y',
+        color=df_plot['label'].astype(str),
+        hover_data={'text': True},
+        title=f"UMAP 2D of CLS vectors (Layer {layer})"
+    )
+    fig.show()
+
+# === 5. Опционально: показать несколько примеров из каждого кластера ===
 if show_examples:
     for lbl in np.unique(labels):
         print(f"\nПримеры текстов для Label {lbl}:")
