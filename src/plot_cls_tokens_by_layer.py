@@ -28,10 +28,12 @@ show_TSNE = True
 show_UMAP = False
 
 # === 1. Загрузка данных ===
-layer = 1  # номер слоя (например, последний слой)
-cls_vectors = np.load(f"./outputs/hidden_states/cls_layer_{layer}.npy")
+layer = 12  # номер слоя (например, последний слой)
+split = 'test'
 
-meta = pd.read_csv("./outputs/hidden_states/meta.csv")
+cls_vectors = np.load(f"./outputs/hidden_states/{split}/cls_layer_{layer}.npy")
+
+meta = pd.read_csv(f"./outputs/hidden_states/{split}/meta.csv")
 labels = meta['label'].values
 texts = meta['text'].values
 
