@@ -169,6 +169,13 @@ def finetune_rubert(df, max_samples=None):
     extract_cls_representations(model, test_dataset, "test", X_texts=list(X_test), device=device)
     # --- Saving CLS tokesn END ---
 
+    # --- Saving Attention matrices START ---
+    # train
+    # extract_attention_matrices(model, tokenizer, train_dataset, "train", device=device)
+    # test
+    extract_attention_matrices(model, tokenizer, test_dataset, "test", device=device)
+    # --- Saving Attention matrices END ---
+
     # 6. Предсказания
     raw_preds = trainer.predict(test_dataset)
     y_pred = np.argmax(raw_preds.predictions, axis=1)
@@ -387,6 +394,60 @@ def balance_classes(df: pd.DataFrame, target_col: str = "reasoning_label") -> pd
     df_balanced = df_balanced.sample(frac=1, random_state=42).reset_index(drop=True)
 
     return df_balanced
+def extract_attention_matrices(model, tokenizer, dataset, loader_name, device="cuda"):
+    """
+    Потоковое извлечение attention-матриц всех слоёв для каждого примера в dataset
+    и сохранение их по батчам в ./outputs/attentions/<loader_name>/ в формате .npz.
+    """
+    import os
+    import torch
+    import numpy as np
+    from tqdm import tqdm
+
+    model.eval()
+    model.config.attn_implementation = "eager"
+    model.config.output_attentions = True
+
+    out_dir = f"./outputs/attentions/{loader_name}"
+    os.makedirs(out_dir, exist_ok=True)
+
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=False)
+
+    all_labels = []
+    all_texts = []
+
+    with torch.no_grad():
+        for i, batch in enumerate(tqdm(dataloader, desc=f"Extract {loader_name} attentions")):
+            inputs = {k: v.to(device) for k, v in batch.items() if k != "labels"}
+            labels_batch = batch["labels"].cpu().numpy()
+            outputs = model(**inputs)
+
+            # attention: tuple (num_layers, batch, num_heads, seq_len, seq_len)
+            batch_attentions = [att.cpu().numpy() for att in outputs.attentions]
+
+            # Сохраняем текущий батч отдельно
+            batch_path = os.path.join(out_dir, f"batch_{i:04d}.npz")
+            np.savez_compressed(
+                batch_path,
+                labels=labels_batch,
+                **{f"layer_{l}": batch_attentions[l] for l in range(len(batch_attentions))}
+            )
+
+            all_labels.append(labels_batch)
+            # Сохраняем тексты, если есть
+            if "text" in batch:
+                all_texts.extend(batch["text"])
+            else:
+                all_texts.extend([None]*len(labels_batch))
+
+    # Сохраняем метаинформацию по всем примерам (labels и тексты)
+    labels_arr = np.concatenate(all_labels, axis=0)
+    texts_arr = np.array(all_texts)
+    np.savez_compressed(os.path.join(out_dir, "meta_labels_texts.npz"),
+                        labels=labels_arr, texts=texts_arr)
+
+    model.config.output_attentions = False
+    print(f"✅ Attention matrices saved batch-wise for {loader_name} to {out_dir}")
 
 def print_metrics_and_plots(model_name, y_test, y_pred, y_proba):
     """
