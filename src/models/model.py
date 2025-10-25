@@ -8,13 +8,12 @@ train_model.py
 
 import sys
 import re
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import nltk
 
-import os, numpy as np, csv, torch
+import numpy as np, csv, torch
 from tqdm import tqdm
 
 import argparse
@@ -90,8 +89,6 @@ def finetune_rubert(df, max_samples=None):
     """
     print("\n=== Применение трансформера ruBert ===")
 
-    import torch
-
     if platform.system() == "Darwin":
         torch.set_num_threads(1) # Важно на чипах Apple silicon
         print("Set torch threads = 1 for macOS")
@@ -161,6 +158,18 @@ def finetune_rubert(df, max_samples=None):
     )
     trainer.train()
 
+    # --- Опционально сохраняем модель ---
+    save_model = True
+    if save_model:
+        save_path = "./pretrained/fine_tuned_rubert"
+        os.makedirs(save_path, exist_ok=True)
+
+        # Сохраняем модель и токенизатор
+        model.save_pretrained(save_path)
+        tokenizer.save_pretrained(save_path)
+
+        print(f"✅ Модель и токенизатор сохранены в {save_path}")
+
     # --- Saving CLS tokesn START ---
     # train
     extract_cls_representations(model, train_dataset, "train", X_texts=list(X_train), device=device)
@@ -225,8 +234,6 @@ def predict_custom_sentences(model, tokenizer, sentences):
     """
     Тестовый метод, чтобы попробовать предсказание на кастомных текстах
     """
-
-    import torch
 
     print("\n=== Предсказания для пользовательских примеров ===")
 
@@ -400,7 +407,6 @@ def extract_attention_matrices(model, tokenizer, dataset, loader_name, device="c
     и сохранение их по батчам в ./outputs/attentions/<loader_name>/ в формате .npz.
     """
     import os
-    import torch
     import numpy as np
     from tqdm import tqdm
 
