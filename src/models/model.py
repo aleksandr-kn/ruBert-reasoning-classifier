@@ -125,7 +125,7 @@ def finetune_rubert(df, max_samples=None):
             for param in model.bert.embeddings.parameters():
                 param.requires_grad = False
 
-            # Например, замораживаем первые 6 из 12 слоёв энкодера
+            # Замораживаем первые 6 из 12 слоёв энкодера
             for param in model.bert.encoder.layer[:6].parameters():
                 param.requires_grad = False
             print("Заморожены нижние слои BERT (embeddings + 6 encoder layers).")
@@ -159,8 +159,8 @@ def finetune_rubert(df, max_samples=None):
         num_train_epochs=1.5,
         per_device_train_batch_size=8,
         per_device_eval_batch_size=8,
-        learning_rate=2e-5,
-        weight_decay=0.01,
+        learning_rate=1e-5,
+        weight_decay=0.05,
         warmup_ratio=0.1,
         load_best_model_at_end=True,
         eval_strategy="epoch",
