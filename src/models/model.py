@@ -450,11 +450,15 @@ def extract_attention_matrices(model, tokenizer, dataset, loader_name, device="c
             # attention: tuple (num_layers, batch, num_heads, seq_len, seq_len)
             batch_attentions = [att.cpu().numpy() for att in outputs.attentions]
 
+            # Дополнительно сохраняем input_ids - индексы слов во внутреннем словаре Bert модели
+            input_ids = batch["input_ids"].cpu().numpy()
+
             # Сохраняем текущий батч отдельно
             batch_path = os.path.join(out_dir, f"batch_{i:04d}.npz")
             np.savez_compressed(
                 batch_path,
                 labels=labels_batch,
+                input_ids=input_ids,
                 **{f"layer_{l}": batch_attentions[l] for l in range(len(batch_attentions))}
             )
 
