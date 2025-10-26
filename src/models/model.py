@@ -29,7 +29,7 @@ from sklearn.metrics import (
 
 # Трансформеры
 try:
-    from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer, EarlyStoppingCallback
 except ImportError:
     # Если transformers/torch не установлены, Approach C работать не будет.
     pass
@@ -142,24 +142,29 @@ def finetune_rubert(df, max_samples=None):
 
     # 5. Trainer
     training_args = TrainingArguments(
-        output_dir='./outputs/results',
-        num_train_epochs=3,
+        num_train_epochs=1.5,
         per_device_train_batch_size=8,
         per_device_eval_batch_size=8,
+        learning_rate=2e-5,
+        weight_decay=0.01,
+        warmup_ratio=0.1,
+        load_best_model_at_end=True,
         eval_strategy="epoch",
         save_strategy="epoch",
+        output_dir='./outputs/results',
         logging_dir='./outputs/logs',
     )
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        eval_dataset=test_dataset
+        eval_dataset=test_dataset,
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=2)]
     )
     trainer.train()
 
     # --- Опционально сохраняем модель ---
-    save_model = False
+    save_model = True
     if save_model:
         save_path = "./pretrained/fine_tuned_rubert"
         os.makedirs(save_path, exist_ok=True)
@@ -346,7 +351,7 @@ def main():
     parser.add_argument(
         "--balance_classes",
         type=bool,
-        default=True,
+        default=False,
         help="Балансировать классы через апсемплинг меньшинства (по умолчанию True)"
     )
 
