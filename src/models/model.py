@@ -116,6 +116,20 @@ def finetune_rubert(df, max_samples=None):
     # model_name = "DeepPavlov/rubert-base-cased-sentence" # Можно попробовать и эту модель
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
+
+
+    # Замораживаем нижние слои BERT, чтобы не переучивать языковые представления
+    freeze_first_layers = True
+    if freeze_first_layers:
+        if hasattr(model, "bert"):
+            for param in model.bert.embeddings.parameters():
+                param.requires_grad = False
+
+            # Например, замораживаем первые 6 из 12 слоёв энкодера
+            for param in model.bert.encoder.layer[:6].parameters():
+                param.requires_grad = False
+            print("Заморожены нижние слои BERT (embeddings + 6 encoder layers).")
+
     # Выставляем device для модели
     model = model.to(device)
 
