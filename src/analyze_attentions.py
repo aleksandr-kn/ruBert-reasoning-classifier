@@ -1,11 +1,18 @@
+"""
+analyze_attentions.py
+
+Скрипт анализирует среднее внимание [CLS] токена на все остальные токены в тексте.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
 ATTN_DIR = "./outputs/attentions/test"
-TARGET_LAYER = 11  # выбранный слой
-HEADS_TO_PLOT = None  # если None — построим для всех голов, иначе можно [0,1,2] и т.д.
+TARGET_LAYER = 11
+TOP_K = 10
+SAMPLES_TO_PLOT = 5
 
 def load_attention_layer(attn_dir, layer_num):
     layers = {}
@@ -22,19 +29,46 @@ def load_attention_layer(attn_dir, layer_num):
         raise ValueError(f"Layer {layer_num} not found in attention files")
     return layers[layer_key]
 
-attn = load_attention_layer(ATTN_DIR, TARGET_LAYER)  # (N, num_heads, seq_len, seq_len)
-num_heads = attn.shape[1]
+# === Загружаем attention и метаинформацию ===
+attn = load_attention_layer(ATTN_DIR, TARGET_LAYER)
+meta_path = os.path.join(ATTN_DIR, "meta_labels_texts.npz")
+meta = np.load(meta_path, allow_pickle=True)
+labels = meta["labels"]
+texts = meta["texts"]
 
-# Выбираем головы
-heads = HEADS_TO_PLOT if HEADS_TO_PLOT is not None else range(num_heads)
+num_samples, num_heads, seq_len, _ = attn.shape
+print(f"Loaded layer {TARGET_LAYER}: {num_samples} samples, {num_heads} heads, seq_len={seq_len}")
 
-for head in heads:
-    cls_attn = attn[:, head, 0, :]  # CLS -> tokens для этой головы
-    cls_mean = cls_attn.mean(axis=0)  # среднее по всем примерам
+# Усредняем по головам
+attn_mean_heads = attn.mean(axis=1)
+cls_to_tokens = attn_mean_heads[:, 0, :]
+cls_to_tokens = cls_to_tokens / cls_to_tokens.sum(axis=1, keepdims=True)
 
-    plt.figure(figsize=(12,2))
-    sns.heatmap(cls_mean[np.newaxis, :], cmap="viridis", cbar=True)
-    plt.title(f"CLS → Tokens (layer {TARGET_LAYER}, head {head})")
+# === Глобальный анализ ===
+cls_mean_global = cls_to_tokens.mean(axis=0)
+plt.figure(figsize=(12, 3))
+sns.barplot(x=np.arange(seq_len), y=cls_mean_global)
+plt.title(f"Среднее внимание CLS к токенам (Layer {TARGET_LAYER})")
+plt.xlabel("Token Index")
+plt.ylabel("Attention weight")
+plt.show()
+
+# === Топ-токены ===
+top_indices = np.argsort(cls_mean_global)[-TOP_K:][::-1]
+print(f" Top-{TOP_K} tokens по среднему вниманию CLS:")
+print(top_indices)
+
+# === Визуализация для нескольких случайных примеров ===
+sample_ids = np.random.choice(num_samples, SAMPLES_TO_PLOT, replace=False)
+for i in sample_ids:
+    plt.figure(figsize=(10, 2))
+    sns.heatmap(cls_to_tokens[i][np.newaxis, :], cmap="mako", cbar=True)
+    label = int(labels[i])
+    text = texts[i] if texts[i] is not None else "(текст не сохранён)"
+    title = f"Пример #{i} (Layer {TARGET_LAYER}) — Label: {label}"
+    plt.title(title)
     plt.xlabel("Token Index")
     plt.yticks([])
     plt.show()
+    print(f"\n🧠 Label: {label}")
+    print(f"📝 Text: {text}\n")
