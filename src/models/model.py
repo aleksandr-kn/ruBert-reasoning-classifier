@@ -159,7 +159,7 @@ def finetune_rubert(df, max_samples=None):
     trainer.train()
 
     # --- Опционально сохраняем модель ---
-    save_model = True
+    save_model = False
     if save_model:
         save_path = "./pretrained/fine_tuned_rubert"
         os.makedirs(save_path, exist_ok=True)
@@ -172,17 +172,17 @@ def finetune_rubert(df, max_samples=None):
 
     # --- Saving CLS tokesn START ---
     # train
-    extract_cls_representations(model, train_dataset, "train", X_texts=list(X_train), device=device)
+    # extract_cls_representations(model, train_dataset, "train", X_texts=list(X_train), device=device)
 
     # Для test
-    extract_cls_representations(model, test_dataset, "test", X_texts=list(X_test), device=device)
+    # extract_cls_representations(model, test_dataset, "test", X_texts=list(X_test), device=device)
     # --- Saving CLS tokesn END ---
 
     # --- Saving Attention matrices START ---
     # train
     # extract_attention_matrices(model, tokenizer, train_dataset, "train", device=device)
     # test
-    extract_attention_matrices(model, tokenizer, test_dataset, "test", device=device)
+    # extract_attention_matrices(model, tokenizer, test_dataset, "test", device=device)
     # --- Saving Attention matrices END ---
 
     # 6. Предсказания
