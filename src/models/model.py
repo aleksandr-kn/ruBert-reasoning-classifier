@@ -71,7 +71,6 @@ def text_cleaning_and_lemmatization(text: str) -> str:
             lemmas.append(lemma)
     return " ".join(lemmas)
 
-
 def plot_confusion_matrix(cm, class_names, title="Confusion Matrix"):
     plt.figure(figsize=(4, 3))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
@@ -116,7 +115,6 @@ def finetune_rubert(df, max_samples=None):
     # model_name = "DeepPavlov/rubert-base-cased-sentence" # Можно попробовать и эту модель
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
-
 
     # Замораживаем нижние слои BERT, чтобы не переучивать языковые представления
     freeze_first_layers = True
@@ -191,17 +189,17 @@ def finetune_rubert(df, max_samples=None):
 
     # --- Saving CLS tokesn START ---
     # train
-    # extract_cls_representations(model, train_dataset, "train", X_texts=list(X_train), device=device)
+    extract_cls_representations(model, train_dataset, "train", X_texts=list(X_train), device=device)
 
     # Для test
-    # extract_cls_representations(model, test_dataset, "test", X_texts=list(X_test), device=device)
+    extract_cls_representations(model, test_dataset, "test", X_texts=list(X_test), device=device)
     # --- Saving CLS tokesn END ---
 
     # --- Saving Attention matrices START ---
     # train
     # extract_attention_matrices(model, tokenizer, train_dataset, "train", device=device)
     # test
-    # extract_attention_matrices(model, tokenizer, test_dataset, "test", device=device)
+    extract_attention_matrices(model, tokenizer, test_dataset, "test", device=device)
     # --- Saving Attention matrices END ---
 
     # 6. Предсказания
@@ -365,7 +363,7 @@ def main():
     parser.add_argument(
         "--balance_classes",
         type=bool,
-        default=False,
+        default=True,
         help="Балансировать классы через апсемплинг меньшинства (по умолчанию True)"
     )
 
@@ -389,6 +387,9 @@ def main():
     if len(df) == 0:
         print("Нет валидных данных для обучения!")
         return
+
+    # === Очистка текста и удаление стоп-слов ===
+    # df["text"] = df["text"].apply(text_cleaning_and_lemmatization)
 
     # Отключаем морфоанализ (use_pymorphy=False) — выше это проверяется
     global use_pymorphy

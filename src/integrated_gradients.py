@@ -4,6 +4,7 @@ from captum.attr import IntegratedGradients
 from collections import defaultdict, Counter
 import pandas as pd
 from tqdm import tqdm
+import spacy
 import re
 
 # === Настройки ===
@@ -16,21 +17,63 @@ TEXTS = list(df[['text', 'reasoning_label']].itertuples(index=False, name=None))
 TARGET_CLASS = 1
 IGNORE_TOKENS = {"[CLS]", "[SEP]", "[PAD]", ".", ",", ";", ":", "-", "—", "…", "«", "»", "(", ")", "?", "!", '"', "'"}
 
-# === Разбиваем текст на фразы без spaCy ===
+# === Загружаем spaCy для русского языка ===
+nlp = spacy.load("ru_core_news_sm")
+
 def split_into_phrases(text):
     """
-    Разбиваем текст на фразы с использованием регулярных выражений
+    Динамическое разбиение текста на подфразы с помощью spaCy.
+    Алгоритм:
+    1. Разделяет по предложениям.
+    2. Внутри предложения ищет зависимые конструкции (advcl, ccomp и т.д.).
+    3. Разбивает по пунктуации и логическим связкам (потому что, хотя, если, но, когда...).
+    4. Возвращает список коротких логических подфраз.
     """
-    # Разделяем по точкам, вопросительным, восклицательным знакам
-    sentences = re.split(r'[.!?]', text)
+    doc = nlp(text)
     phrases = []
-    for sent in sentences:
-        # Далее разбиваем на подфразы по запятым, точкам с запятой, тире
-        sub_phrases = re.split(r'[;,\-—]', sent)
-        for p in sub_phrases:
-            p_clean = p.strip()
-            if p_clean:
-                phrases.append(p_clean)
+
+    connectives = {"потому что", "так как", "если", "когда", "чтобы", "но", "однако", "хотя", "зато", "поэтому"}
+    seen = set()
+
+    for sent in doc.sents:
+        # Разбиваем по зависимостям
+        for token in sent:
+            if token.dep_ in ("mark", "cc", "advcl", "ccomp", "acl", "relcl"):
+                subtree = list(token.subtree)
+                if not any(t.i in seen for t in subtree):
+                    phrase = " ".join([t.text for t in subtree]).strip()
+                    if len(phrase.split()) >= 2:
+                        phrases.append(phrase)
+                        seen.update([t.i for t in subtree])
+
+        # Если ничего не нашли — пробуем делить по пунктуации и связкам
+        if not phrases:
+            raw = sent.text.strip()
+
+            # Разделяем по запятым и тире
+            chunks = re.split(r"[;,—]+", raw)
+            for ch in chunks:
+                ch = ch.strip()
+                if len(ch.split()) < 2:
+                    continue
+
+                # Проверяем наличие связок внутри
+                for c in connectives:
+                    if c in ch:
+                        before, after = ch.split(c, 1)
+                        if before.strip():
+                            phrases.append(before.strip())
+                        phrases.append(c)
+                        if after.strip():
+                            phrases.append(after.strip())
+                        break
+                else:
+                    phrases.append(ch)
+
+    # fallback — если совсем ничего не вышло
+    if not phrases:
+        phrases = [text.strip()]
+
     return phrases
 
 # === Загружаем модель и токенизатор ===
