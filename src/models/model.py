@@ -118,15 +118,16 @@ def finetune_rubert(df, max_samples=None):
 
     # Замораживаем нижние слои BERT, чтобы не переучивать языковые представления
     freeze_first_layers = True
+    freeze_layers_up_to_num = 8
     if freeze_first_layers:
         if hasattr(model, "bert"):
             for param in model.bert.embeddings.parameters():
                 param.requires_grad = False
 
-            # Замораживаем первые 6 из 12 слоёв энкодера
-            for param in model.bert.encoder.layer[:6].parameters():
+            # Замораживаем первые x из 12 слоёв энкодера
+            for param in model.bert.encoder.layer[:freeze_layers_up_to_num].parameters():
                 param.requires_grad = False
-            print("Заморожены нижние слои BERT (embeddings + 6 encoder layers).")
+            print(f"Заморожены нижние слои BERT (embeddings + {freeze_layers_up_to_num} encoder layers).")
 
     # Выставляем device для модели
     model = model.to(device)
@@ -154,10 +155,10 @@ def finetune_rubert(df, max_samples=None):
 
     # 5. Trainer
     training_args = TrainingArguments(
-        num_train_epochs=1.5,
-        per_device_train_batch_size=8,
-        per_device_eval_batch_size=8,
-        learning_rate=1e-5,
+        num_train_epochs=8,
+        per_device_train_batch_size=32,
+        per_device_eval_batch_size=32,
+        learning_rate=2e-5,
         weight_decay=0.05,
         warmup_ratio=0.1,
         load_best_model_at_end=True,
@@ -190,7 +191,6 @@ def finetune_rubert(df, max_samples=None):
     # --- Saving CLS tokesn START ---
     # train
     extract_cls_representations(model, train_dataset, "train", X_texts=list(X_train), device=device)
-
     # Для test
     extract_cls_representations(model, test_dataset, "test", X_texts=list(X_test), device=device)
     # --- Saving CLS tokesn END ---
@@ -199,7 +199,7 @@ def finetune_rubert(df, max_samples=None):
     # train
     # extract_attention_matrices(model, tokenizer, train_dataset, "train", device=device)
     # test
-    extract_attention_matrices(model, tokenizer, test_dataset, "test", device=device)
+    # extract_attention_matrices(model, tokenizer, test_dataset, "test", device=device)
     # --- Saving Attention matrices END ---
 
     # 6. Предсказания
@@ -231,6 +231,7 @@ def finetune_rubert(df, max_samples=None):
     print("ROC AUC:", roc_auc_val)
     print("PR AUC:", pr_auc_val)
 
+    # Сбор мусора, не помню зачем, но нужен
     import gc
     gc.collect()
     torch.cuda.empty_cache()

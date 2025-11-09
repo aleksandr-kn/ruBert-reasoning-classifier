@@ -14,7 +14,7 @@ layer_list = []
 f1_train_list = []
 f1_test_list = []
 
-for layer in range(13):  # слои 0-12
+for layer in range(1, 13):  # слои 0-12
     X_train = np.load(f"./outputs/hidden_states/train/cls_layer_{layer}.npy")
     X_test = np.load(f"./outputs/hidden_states/test/cls_layer_{layer}.npy")
 
