@@ -364,7 +364,7 @@ def main():
     parser.add_argument(
         "--balance_classes",
         type=bool,
-        default=True,
+        default=False,
         help="Балансировать классы через апсемплинг меньшинства (по умолчанию True)"
     )
 
