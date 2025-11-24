@@ -99,8 +99,8 @@ def main():
     if args.show_umap:
         # Настройка UMAP
         reducer = umap.UMAP(
-            n_neighbors=40,  # сколько ближайших соседей учитывать
-            min_dist=0.2,  # насколько "плотно" кластеры будут располагаться
+            n_neighbors=150,  # сколько ближайших соседей учитывать
+            min_dist=0.6,  # насколько "плотно" кластеры будут располагаться
             n_components=2,
             random_state=42,
             metric='cosine'
@@ -123,6 +123,9 @@ def main():
             hover_data={'text': True},
             title=f"UMAP 2D of CLS vectors (Layer {args.layer})"
         )
+        # размер точек (тут в пикселях)
+        fig.update_traces(marker=dict(size=15))
+
         fig.show()
 
     # === 5. Опционально: показать несколько примеров из каждого кластера ===
