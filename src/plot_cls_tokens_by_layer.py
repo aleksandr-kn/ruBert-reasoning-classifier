@@ -22,106 +22,116 @@ import umap
 
 import plotly.express as px
 
-show_PCA = False
-show_examples = False
-show_TSNE = True
-show_UMAP = False
+import argparse
 
-# === 1. Загрузка данных ===
-layer = 12  # номер слоя (например, последний слой)
-split = 'test'
+def main():
+    parser = argparse.ArgumentParser(description="Integrated Gradients + Embedding Visualization")
 
-cls_vectors = np.load(f"./outputs/hidden_states/{split}/cls_layer_{layer}.npy")
+    parser.add_argument("--show_pca", action="store_true",
+                        help="Показать PCA проекцию (default: False)")
 
-meta = pd.read_csv(f"./outputs/hidden_states/{split}/meta.csv")
-labels = meta['label'].values
-texts = meta['text'].values
+    parser.add_argument("--show_examples", action="store_true",
+                        help="Показать примеры предложений (default: False)")
 
-print(f"CLS shape: {cls_vectors.shape}, Labels: {labels.shape}, Texts: {len(texts)}")
+    parser.add_argument("--show_tsne", action="store_true",
+                        help="Показать t-SNE визуализацию (default: True)")
 
-# === 2. PCA для быстрого обзора ===
-if show_PCA:
-    pca = PCA(n_components=2)
-    cls_2d = pca.fit_transform(cls_vectors)
+    parser.add_argument("--show_umap", action="store_true",
+                        help="Показать UMAP (default: False)")
 
-    plt.figure(figsize=(8,6))
-    for lbl in np.unique(labels):
-        idxs = labels == lbl
-        plt.scatter(cls_2d[idxs,0], cls_2d[idxs,1], label=f"Label {lbl}", alpha=0.7)
-    plt.legend()
-    plt.title(f"PCA 2D of CLS vectors (Layer {layer})")
-    plt.xlabel("PC1")
-    plt.ylabel("PC2")
-    plt.show()
+    parser.add_argument("--layer", type=int, default=12,
+                        help="Номер слоя BERT для извлечения эмбеддингов (default: 12)")
 
-# === 3. t-SNE для более детального взгляда ===
-if show_TSNE:
-    # Подготовка данных
-    tsne = TSNE(n_components=2, random_state=42, perplexity=30)
-    cls_2d_tsne = tsne.fit_transform(cls_vectors)
+    parser.add_argument("--split", type=str, default="test",
+                        help="Выбор части датасета: train/valid/test (default: test)")
 
-    df_plot = pd.DataFrame({
-        'x': cls_2d_tsne[:, 0],
-        'y': cls_2d_tsne[:, 1],
-        'label': labels,
-        'text': texts
-    })
+    args = parser.parse_args()
 
-    fig = px.scatter(
-        df_plot,
-        x='x',
-        y='y',
-        color=df_plot['label'].astype(str),
-        hover_data={'text': True},
-        title=f"t-SNE 2D of CLS vectors (Layer {layer})"
-    )
+    # === 1. Загрузка данных ===
+    cls_vectors = np.load(f"./outputs/hidden_states/{args.split}/cls_layer_{args.layer}.npy")
 
-    fig.show()
+    meta = pd.read_csv(f"./outputs/hidden_states/{args.split}/meta.csv")
+    labels = meta['label'].values
+    texts = meta['text'].values
 
-    # Старая визуализация, но возможно еще понадобится
-    if False:
+    print(f"CLS shape: {cls_vectors.shape}, Labels: {labels.shape}, Texts: {len(texts)}")
+
+    # === 2. PCA для быстрого обзора ===
+    if args.show_pca:
+        pca = PCA(n_components=2)
+        cls_2d = pca.fit_transform(cls_vectors)
+
         plt.figure(figsize=(8,6))
         for lbl in np.unique(labels):
             idxs = labels == lbl
-            plt.scatter(cls_2d_tsne[idxs,0], cls_2d_tsne[idxs,1], label=f"Label {lbl}", alpha=0.7)
+            plt.scatter(cls_2d[idxs,0], cls_2d[idxs,1], label=f"Label {lbl}", alpha=0.7)
         plt.legend()
-        plt.title(f"t-SNE 2D of CLS vectors (Layer {layer})")
+        plt.title(f"PCA 2D of CLS vectors (Layer {args.layer})")
+        plt.xlabel("PC1")
+        plt.ylabel("PC2")
         plt.show()
 
-# === 5. UMAP ===
-if show_UMAP:
-    # Настройка UMAP
-    reducer = umap.UMAP(
-        n_neighbors=40,   # сколько ближайших соседей учитывать
-        min_dist=0.2,     # насколько "плотно" кластеры будут располагаться
-        n_components=2,
-        random_state=42,
-        metric='cosine'
-    )
+    # === 3. t-SNE для более детального взгляда ===
+    if args.show_tsne:
+        # Подготовка данных
+        tsne = TSNE(n_components=2, random_state=42, perplexity=30)
+        cls_2d_tsne = tsne.fit_transform(cls_vectors)
 
-    cls_2d_umap = reducer.fit_transform(cls_vectors)
+        df_plot = pd.DataFrame({
+            'x': cls_2d_tsne[:, 0],
+            'y': cls_2d_tsne[:, 1],
+            'label': labels,
+            'text': texts
+        })
 
-    df_plot = pd.DataFrame({
-        'x': cls_2d_umap[:, 0],
-        'y': cls_2d_umap[:, 1],
-        'label': labels,
-        'text': texts
-    })
+        fig = px.scatter(
+            df_plot,
+            x='x',
+            y='y',
+            color=df_plot['label'].astype(str),
+            hover_data={'text': True},
+            title=f"t-SNE 2D of CLS vectors (Layer {args.layer})"
+        )
 
-    fig = px.scatter(
-        df_plot,
-        x='x',
-        y='y',
-        color=df_plot['label'].astype(str),
-        hover_data={'text': True},
-        title=f"UMAP 2D of CLS vectors (Layer {layer})"
-    )
-    fig.show()
+        fig.show()
 
-# === 5. Опционально: показать несколько примеров из каждого кластера ===
-if show_examples:
-    for lbl in np.unique(labels):
-        print(f"\nПримеры текстов для Label {lbl}:")
-        idxs = np.where(labels == lbl)[0][:5]  # первые 5
-        for i in idxs:
-            print("-", texts[i][:200].replace("\n"," "), "...")
+    # === 4. UMAP ===
+    if args.show_umap:
+        # Настройка UMAP
+        reducer = umap.UMAP(
+            n_neighbors=40,  # сколько ближайших соседей учитывать
+            min_dist=0.2,  # насколько "плотно" кластеры будут располагаться
+            n_components=2,
+            random_state=42,
+            metric='cosine'
+        )
+
+        cls_2d_umap = reducer.fit_transform(cls_vectors)
+
+        df_plot = pd.DataFrame({
+            'x': cls_2d_umap[:, 0],
+            'y': cls_2d_umap[:, 1],
+            'label': labels,
+            'text': texts
+        })
+
+        fig = px.scatter(
+            df_plot,
+            x='x',
+            y='y',
+            color=df_plot['label'].astype(str),
+            hover_data={'text': True},
+            title=f"UMAP 2D of CLS vectors (Layer {args.layer})"
+        )
+        fig.show()
+
+    # === 5. Опционально: показать несколько примеров из каждого кластера ===
+    if args.show_examples:
+        for lbl in np.unique(labels):
+            print(f"\nПримеры текстов для Label {lbl}:")
+            idxs = np.where(labels == lbl)[0][:5]  # первые 5
+            for i in idxs:
+                print("-", texts[i][:200].replace("\n", " "), "...")
+
+if __name__ == "__main__":
+    main()
