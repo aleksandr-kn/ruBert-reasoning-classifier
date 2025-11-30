@@ -13,9 +13,11 @@ _model = None
 _tokenizer = None
 _device = None
 
+
 def init_process(model_dir):
     global _model, _tokenizer, _device
     _model, _tokenizer, _device = load_model(model_dir)
+
 
 def ablation(text, remove_tokens):
     """
@@ -98,8 +100,8 @@ def main():
     # Получаем оригинальные предсказания
     original_predictions = get_original_predictions(sentences, model, tokenizer, device)
 
-    # Собираем все результаты для анализа
-    all_results = []
+    # Собираем только топ-3 результаты для каждого текста
+    top_results_per_text = []
 
     for idx, (sent, orig_pred) in enumerate(zip(sentences, original_predictions)):
         original_text = sent["text"]
@@ -118,10 +120,22 @@ def main():
         with Pool(processes=8, initializer=init_process, initargs=("./pretrained/fine_tuned_rubert",)) as pool:
             ablation_results = pool.map(process_combo, all_combos)
 
-        # Сохраняем все результаты для этого текста
-        for combo, text, prob, label_name, confidence_diff in ablation_results:
-            all_results.append({
+        # Сортируем по наибольшему снижению уверенности (наибольшая разница first)
+        ablation_results.sort(key=lambda x: x[4], reverse=True)
+
+        # Берем только топ-3 для этого текста
+        top_3_for_text = ablation_results[:3]
+
+        print("\nТоп 3 комбинации, снижающих уверенность:")
+        for i, (combo, text, prob, label_name, confidence_diff) in enumerate(top_3_for_text):
+            print(f"{i + 1}. Удалено: {combo}")
+            print(f"   Новая уверенность: {prob:.4f} (разница: {confidence_diff:.4f})")
+            print(f"   Текст после: {text}")
+
+            # Сохраняем топ-3 результаты
+            top_results_per_text.append({
                 "text_id": idx + 1,
+                "rank": i + 1,
                 "original_text": original_text,
                 "removed_tokens": ", ".join(combo),
                 "ablated_text": text,
@@ -132,49 +146,20 @@ def main():
                 "new_label": label_name
             })
 
-        # Сортируем по наибольшему снижению уверенности
-        ablation_results.sort(key=lambda x: x[4])  # сортируем по confidence_diff
+    # Сохраняем только топ-3 результаты в CSV
+    df_top = pd.DataFrame(top_results_per_text)
+    df_top.to_csv("./outputs/ablation_analysis_top3_per_text.csv", index=False, encoding='utf-8')
 
-        print("\nТоп 5 комбинаций, снижающих уверенность:")
-        for combo, text, prob, label_name, confidence_diff in ablation_results[:5]:
-            print(f"Удалено: {combo}")
-            print(f"Новая уверенность: {prob:.4f} (разница: {confidence_diff:.4f})")
-            print(f"Текст после: {text}")
-            print("---")
+    print(f"\n=== ИТОГОВЫЕ РЕЗУЛЬТАТЫ ===")
+    print(f"Сохранено топ-3 комбинаций для каждого текста (всего {len(df_top)} записей)")
 
-    # Сохраняем все результаты в CSV
-    df = pd.DataFrame(all_results)
-    df.to_csv("ablation_analysis_all_results.csv", index=False, encoding='utf-8')
-
-    # Анализ: находим комбинации, которые больше всего снижают уверенность
-    print(f"\n=== ОБЩИЙ АНАЛИЗ ===")
-    print(f"Всего протестировано комбинаций: {len(all_results)}")
-
-    # Топ-20 комбинаций по снижению уверенности
-    top_reductions = df.nlargest(20, 'confidence_difference')
-
-    print("\nТоп-20 комбинаций по снижению уверенности:")
-    for idx, row in top_reductions.iterrows():
-        print(f"\nТекст {row['text_id']}:")
-        print(f"Удаленные токены: {row['removed_tokens']}")
-        print(f"Разница в уверенности: {row['confidence_difference']:.4f}")
-        print(f"Было: {row['original_confidence']:.4f} -> Стало: {row['new_confidence']:.4f}")
-
-    # Сохраняем топ снижения в отдельный файл
-    top_reductions.to_csv("ablation_analysis_top_reductions.csv", index=False, encoding='utf-8')
-
-    # Анализ по текстам
-    print(f"\n=== АНАЛИЗ ПО ТЕКСТАМ ===")
-    for text_id in df['text_id'].unique():
-        text_results = df[df['text_id'] == text_id]
-        max_reduction = text_results['confidence_difference'].max()
-        avg_reduction = text_results['confidence_difference'].mean()
-
-        print(f"Текст {text_id}:")
-        print(f"  Макс. снижение уверенности: {max_reduction:.4f}")
-        print(f"  Среднее снижение уверенности: {avg_reduction:.4f}")
-        print(f"  Количество протестированных комбинаций: {len(text_results)}")
-
+    # Выводим сводную таблицу
+    print("\nСводная таблица топ-3 снижений уверенности:")
+    for text_id in sorted(df_top['text_id'].unique()):
+        text_results = df_top[df_top['text_id'] == text_id]
+        print(f"\nТекст {text_id}:")
+        for _, row in text_results.iterrows():
+            print(f"  #{row['rank']}: Удалено '{row['removed_tokens']}' - разница: {row['confidence_difference']:.4f}")
 
 if __name__ == "__main__":
     main()
