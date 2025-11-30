@@ -7,12 +7,43 @@ from nltk.corpus import stopwords
 import re
 import pandas as pd
 from multiprocessing import Pool
+from tqdm import tqdm
 
 # Глобальные переменные для процесса
 _model = None
 _tokenizer = None
 _device = None
 
+
+def load_sentences():
+    # path до csv хардкодом
+    csv_path = "./data/texts/corrected_texts_with_percentile_90_test.csv"
+
+    # Загружаем CSV файл
+    df = pd.read_csv(csv_path)
+
+    # Фильтруем только строки с reasoning_label = 1
+    df_filtered = df[df['reasoning_label'] == 1]
+
+    # Преобразуем в нужный формат с обрезкой до 60 слов
+    sentences = []
+    for _, row in df_filtered.iterrows():
+        text = row["text"]
+
+        # Простая обрезка до 60 слов
+        words = text.split()
+        if len(words) > 50:
+            truncated_text = " ".join(words[:50])
+        else:
+            truncated_text = text
+
+        sentences.append({
+            "text": truncated_text,
+            "label": row["reasoning_label"]
+        })
+
+    print(f"Загружено {len(sentences)} текстов с reasoning_label = 1")
+    return sentences
 
 def init_process(model_dir):
     global _model, _tokenizer, _device
@@ -63,30 +94,13 @@ def get_original_predictions(sentences, model, tokenizer, device):
         })
     return original_predictions
 
-
 def main():
     nltk.download("stopwords")
     russian_stopwords = set(stopwords.words("russian"))
 
     nlp = spacy.load("ru_core_news_sm")
 
-    sentences = [
-        {
-            "text": "На улице лужи, хотя дождь прекратился несколько часов назад. Значит, дождь был очень сильным, так как земля не успела просохнуть. Это объяснение кажется мне логичным.",
-            "label": 1},
-        {
-            "text": "Научно-технический прогресс неразрывно связан с развитием фундаментальной науки. Хотя прикладные исследования дают быстрый практический результат, именно открытия в теоретических областях создают основу для технологических прорывов.",
-            "label": 1},
-        {
-            "text": "Физическая активность полезна для психического здоровья. Во время тренировок выделяются эндорфины, которые снижают стресс. Поэтому спорт можно считать естественным антидепрессантом.",
-            "label": 1},
-        {
-            "text": "Изучение иностранного языка эффективнее в детстве. Мозг ребенка более пластичен и легко усваивает новые грамматические конструкции. Поэтому раннее погружение в языковую среду дает наилучшие результаты.",
-            "label": 1},
-        {
-            "text": "Поскольку пластиковые отходы наносят непоправимый вред морским экосистемам, сокращение использования пластика становится необходимостью. Следовательно, переход на биоразлагаемые материалы является безотлагательной задачей для человечества, ибо только это позволит сохранить океаны для будущих поколений.",
-            "label": 1},
-    ]
+    sentences = load_sentences()[375:400]
 
     def extract_tokens(text):
         """Выбираем значимые токены из текста"""
@@ -103,7 +117,9 @@ def main():
     # Собираем только топ-3 результаты для каждого текста
     top_results_per_text = []
 
-    for idx, (sent, orig_pred) in enumerate(zip(sentences, original_predictions)):
+    for idx, (sent, orig_pred) in enumerate(tqdm(zip(sentences, original_predictions),
+                                                 total=len(sentences),
+                                                 desc="Обработка текстов")):
         original_text = sent["text"]
         original_prob = orig_pred["original_prob"]
         tokens = extract_tokens(original_text)
