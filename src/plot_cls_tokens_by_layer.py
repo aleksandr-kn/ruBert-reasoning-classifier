@@ -120,11 +120,16 @@ def main():
             x='x',
             y='y',
             color=df_plot['label'].astype(str),
+            symbol=df_plot['label'].astype(str),
+            symbol_map={
+                '0': 'x',
+                '1': 'circle'
+            },
             hover_data={'text': True},
             title=f"UMAP 2D of CLS vectors (Layer {args.layer})"
         )
         # размер точек (тут в пикселях)
-        fig.update_traces(marker=dict(size=15))
+        fig.update_traces(marker=dict(size=36))
 
         fig.show()
 
