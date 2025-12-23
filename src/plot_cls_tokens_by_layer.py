@@ -131,6 +131,25 @@ def main():
         # размер точек (тут в пикселях)
         fig.update_traces(marker=dict(size=36))
 
+        fig.update_layout(
+            title=dict(
+                font=dict(size=56)
+            ),
+            xaxis=dict(
+                title_font=dict(size=36),
+                tickfont=dict(size=28)
+            ),
+            yaxis=dict(
+                title_font=dict(size=36),
+                tickfont=dict(size=28)
+            ),
+            legend=dict(
+                font=dict(size=36),
+                title_font=dict(size=42)
+            ),
+            font=dict(size=28)
+        )
+
         fig.show()
 
     # === 5. Опционально: показать несколько примеров из каждого кластера ===
